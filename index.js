@@ -3,15 +3,11 @@ const { Storage } = require("@google-cloud/storage");
 const fetch = require("node-fetch");
 const mailgun = require("mailgun-js");
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
-const DOMAIN = "demo.shobhitsrivas.me";
+const DOMAIN = process.env.MAILGUN_DOMAIN;
 const mg = mailgun({
-  apiKey: "b5e10512881b9cc8d36303e5a4c77a68-5d2b1caa-3bc69fb2",
+  apiKey: process.env.MAILGUN_KEY,
   domain: DOMAIN,
 });
-console.log("Checking the keys ------------- || -----------");
-console.log("GCP_SERVICE_ACCOUNT_KEY", process.env.GCP_PRIVATE_KEY);
-console.log("GCS_BUCKET_NAME", process.env.GCS_BUCKET_NAME);
-console.log("DYNAMODB_TABLE_NAME", process.env.DYNAMODB_TABLE_NAME);
 exports.handler = async function handler(event) {
   try {
     const decodedPrivateKey = Buffer.from(
@@ -23,9 +19,6 @@ exports.handler = async function handler(event) {
       projectId: "csye6225demo",
       credentials: keyFileJson,
     });
-
-    console.log("EVENT SNS", event.Records[0].Sns);
-    console.log("EVENT", event);
     const eventData = JSON.parse(event.Records[0].Sns.Message);
     const releaseUrl = eventData.releaseUrl;
     var recipientEmail = eventData.email;
@@ -36,7 +29,6 @@ exports.handler = async function handler(event) {
     const response = await fetch(releaseUrl);
     if (!response.ok)
       throw new Error(`Failed to download release: ${response.statusText}`);
-
     const releaseData = await response.buffer();
     const bucketName = process.env.GCS_BUCKET_NAME;
     const fileName = `${userId}/${assignmentId}/file${Date.now().toString()}.zip`;
@@ -44,7 +36,7 @@ exports.handler = async function handler(event) {
     let signedUrl = await generateSignedUrl(storage, bucketName, fileName);
     await sendEmail(
       recipientEmail,
-      signedUrl,
+      fileName,
       "Download successful",
       `The release was successfully downloaded and uploaded to ${bucketName}`
     );
@@ -52,7 +44,7 @@ exports.handler = async function handler(event) {
   } catch (error) {
     console.error("Error:", error);
     await sendEmail(
-      event.email,
+      recipientEmail,
       null,
       "Download failed",
       `Error occurred: ${error.message}`
@@ -64,7 +56,7 @@ exports.handler = async function handler(event) {
 async function generateSignedUrl(storage, bucketName, fileName) {
   const options = {
     action: "read",
-    expires: Date.now() + 15 * 60 * 1000, // 15 minutes
+    expires: Date.now() + 15 * 60 * 1000,
   };
 
   try {
@@ -84,7 +76,20 @@ async function sendEmail(to, url, subject, message) {
     from: "noreply@demo.shobhitsrivas.me",
     to: to,
     subject: subject,
-    text: message + url,
+    html: `
+    <html>
+      <head>
+      </head>
+      <body>
+        <p>Hello,</p>
+        <p>Please click on the below link to download your assignment:</p>
+        <p><b>${url}</b></p>
+        <p>We're glad you're here!</p>
+        <p>Thank you</p>
+        <p>Shobhit</p>
+      </body>
+    </html>
+  `,
   };
   await mg.messages().send(data);
 }
