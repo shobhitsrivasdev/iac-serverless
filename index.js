@@ -4,8 +4,9 @@ const fetch = require("node-fetch");
 const mailgun = require("mailgun-js");
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
 const DOMAIN = process.env.MAILGUN_DOMAIN;
+const KEY = process.env.MAILGUN_KEY;
 const mg = mailgun({
-  apiKey: process.env.MAILGUN_KEY,
+  apiKey: KEY,
   domain: DOMAIN,
 });
 exports.handler = async function handler(event) {
@@ -38,18 +39,20 @@ exports.handler = async function handler(event) {
       recipientEmail,
       fileName,
       "Download successful",
-      `The release was successfully downloaded and uploaded to ${bucketName}`
+      `The release was successfully downloaded and uploaded to ${bucketName}`,
+      "success"
     );
-    await recordEmailEvent(recipientEmail, "success");
+    await recordEmailEvent(recipientEmail, "SUCCESS EMAIL SENT");
   } catch (error) {
     console.error("Error:", error);
     await sendEmail(
       recipientEmail,
       null,
       "Download failed",
-      `Error occurred: ${error.message}`
+      `Error occurred: ${error.message}`,
+      "error"
     );
-    await recordEmailEvent(recipientEmail, "failure");
+    await recordEmailEvent(recipientEmail, "FAILURE EMAIL SENT");
   }
 };
 
@@ -71,12 +74,14 @@ async function generateSignedUrl(storage, bucketName, fileName) {
   }
 }
 
-async function sendEmail(to, url, subject, message) {
+async function sendEmail(to, url, subject, message, status) {
   const data = {
     from: "noreply@demo.shobhitsrivas.me",
     to: to,
     subject: subject,
-    html: `
+    html:
+      status == "success"
+        ? `
     <html>
       <head>
       </head>
@@ -89,7 +94,8 @@ async function sendEmail(to, url, subject, message) {
         <p>Shobhit</p>
       </body>
     </html>
-  `,
+  `
+        : message,
   };
   await mg.messages().send(data);
 }
